@@ -2,13 +2,14 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "types": ["node", "vitest/globals"],
     "skipLibCheck": true,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "noEmit": false,
+    "outDir": "./dist",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -16,9 +17,9 @@
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
     "ignoreDeprecations": "6.0",
-    "baseUrl": "..",
+    "baseUrl": ".",
     "paths": {
-      "shared/*": ["shared/*"]
+      "shared/*": ["../shared/*"]
     }
   },
   "include": ["src", "tests", "../shared"]
