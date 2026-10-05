@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import cors from 'cors';
-import { createDatabase, type Db } from './db/connection';
+import { createDatabase, applyMigrations } from './db/connection.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { CourseRepository, SemesterRepository } from './repositories/courseRepository';
 import { MaterialRepository } from './repositories/materialRepository';
