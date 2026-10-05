@@ -1,7 +1,7 @@
 /**
  * Entry point server untuk Vercel Serverless & Local Development.
  */
-import { createApp } from './app';
+import { createApp } from './app.js';
 import { createDatabase, applyMigrations } from './db/connection';
 
 // Inisialisasi database dan aplikasi Express
