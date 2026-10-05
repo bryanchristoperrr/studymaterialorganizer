@@ -26,7 +26,7 @@ const optionalText = (max: number) =>
     .max(max, `Maksimal ${max} karakter`)
     .nullable()
     .optional()
-    .transform((value) => (value === '' ? null : (value ?? null)));
+    .transform((value: string | null | undefined) => (value === '' ? null : (value ?? null)));
 
 /** String wajib: trim, panjang minimal & maksimal. */
 const requiredText = (min: number, max: number, label: string) =>
@@ -43,7 +43,7 @@ const requiredText = (min: number, max: number, label: string) =>
  */
 const optionalHttpUrl = z
   .union([z.literal(''), z.string()])
-  .transform((value) => (value === '' ? null : value.trim()))
+  .transform((value: string) => (value === '' ? null : value.trim()))
   .pipe(
     z
       .string()
@@ -51,7 +51,7 @@ const optionalHttpUrl = z
       .max(2048, 'URL terlalu panjang')
       .url('Format URL tidak valid')
       .refine(
-        (value) => /^https?:\/\//i.test(value),
+        (value: string) => /^https?:\/\//i.test(value),
         'URL harus diawali http:// atau https://',
       )
       .nullable(),
@@ -63,26 +63,26 @@ const optionalDoi = z
   .string()
   .trim()
   .max(255, 'DOI terlalu panjang')
-  .transform((value) =>
+  .transform((value: string) =>
     value.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').toLowerCase(),
   )
-  .refine((value) => value === '' || /^10\.\d{4,9}\/[-._;()/:a-z0-9]+$/.test(value), {
+  .refine((value: string) => value === '' || /^10\.\d{4,9}\/[-._;()/:a-z0-9]+$/.test(value), {
     message: 'Format DOI tidak valid (contoh: 10.1000/xyz123)',
   })
   .nullable()
   .optional()
-  .transform((value) => (value === '' ? null : (value ?? null)));
+  .transform((value: string | null | undefined) => (value === '' ? null : (value ?? null)));
 
 /** Angka opsional: '' dari form html dianggap null. */
 const optionalInteger = (min: number, max: number, label: string) =>
   z
     .union([z.coerce.number(), z.literal('')])
-    .refine((value) => value === '' || (Number.isInteger(value) && value >= min && value <= max), {
+    .refine((value: number | string) => value === '' || (Number.isInteger(value) && Number(value) >= min && Number(value) <= max), {
       message: `${label} harus bilangan bulat antara ${min} dan ${max}`,
     })
     .nullable()
     .optional()
-    .transform((value) => (value === '' || value === null || value === undefined ? null : Number(value)));
+    .transform((value: number | string | null | undefined) => (value === '' || value === null || value === undefined ? null : Number(value)));
 
 const importance = z.coerce
   .number({ invalid_type_error: 'Importance harus angka' })
@@ -93,7 +93,7 @@ const importance = z.coerce
 const currentYearPlusOne = new Date().getFullYear() + 1;
 
 /* ------------------------------------------------------------------ */
-/* Material                                                            */
+/* Material                                                           */
 /* ------------------------------------------------------------------ */
 
 /** Field material sebagai ZodObject agar bisa di-derive (partial) untuk update. */
@@ -116,12 +116,12 @@ const materialFieldsSchema = z.object({
   deadlineAt: z
     .union([z.string().datetime({ offset: true }), z.literal(''), z.null()])
     .optional()
-    .transform((value) => (value ? value : null)),
+    .transform((value: string | null | undefined) => (value ? value : null)),
   courseIds: z.array(z.string().min(1)).max(20).optional(),
   tagNames: z.array(z.string().min(1)).max(20).optional(),
 });
 
-export const createMaterialSchema = materialFieldsSchema.superRefine((data, ctx) => {
+export const createMaterialSchema = materialFieldsSchema.superRefine((data: any, ctx: any) => {
   // B1: hanya 'book' yang boleh tanpa URL.
   if (data.type !== 'book' && !data.url) {
     ctx.addIssue({
@@ -153,7 +153,7 @@ export const updateMaterialSchema = materialFieldsSchema
       .int('Version harus bilangan bulat')
       .min(1, 'Version minimal 1'),
   })
-  .superRefine((data, ctx) => {
+  .superRefine((data: any, ctx: any) => {
     // B1 tetap berlaku saat update: bila type bukan book, URL harus ada.
     if (data.type && data.type !== 'book' && data.url === null) {
       ctx.addIssue({
@@ -167,11 +167,11 @@ export const updateMaterialSchema = materialFieldsSchema
 export type UpdateMaterialInput = z.output<typeof updateMaterialSchema>;
 
 /* ------------------------------------------------------------------ */
-/* Query list material                                                 */
+/* Query list material                                                */
 /* ------------------------------------------------------------------ */
 
 /** Terima 'a,b' maupun ['a','b'] (Express selalu mengirim string untuk query). */
-const csvArray = z.preprocess((value) => {
+const csvArray = z.preprocess((value: unknown) => {
   if (typeof value === 'string') return value.split(',').map((v) => v.trim());
   return value;
 }, z.array(z.string().trim().min(1)).optional());
@@ -200,13 +200,13 @@ export const materialsQuerySchema = z.object({
   includeDeleted: z
     .union([z.boolean(), z.literal('true'), z.literal('false')])
     .optional()
-    .transform((value) => value === true || value === 'true'),
+    .transform((value: boolean | string | undefined) => value === true || value === 'true'),
 });
 
 export type MaterialsQuery = z.output<typeof materialsQuerySchema>;
 
 /* ------------------------------------------------------------------ */
-/* Course & Semester                                                   */
+/* Course & Semester                                                  */
 /* ------------------------------------------------------------------ */
 
 const courseCode = z
@@ -215,7 +215,7 @@ const courseCode = z
   .min(2, 'Kode minimal 2 karakter')
   .max(20, 'Kode maksimal 20 karakter')
   .regex(/^[A-Za-z0-9-]+$/, 'Kode hanya boleh huruf, angka, dan strip')
-  .transform((value) => value.toUpperCase());
+  .transform((value: string) => value.toUpperCase());
 
 export const createCourseSchema = z.object({
   code: courseCode,
