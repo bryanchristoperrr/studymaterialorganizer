@@ -1,6 +1,6 @@
 /**
  * Composition root: merangkai repository → service → controller → route.
- * Database di-inject di sini supaya test dapat memakai SQLite in-memory
+ * Database di-inject di sini supaya test dapat memakai PGlite in-memory
  * tanpa mengubah kode aplikasi sama sekali.
  */
 import { existsSync } from 'node:fs';

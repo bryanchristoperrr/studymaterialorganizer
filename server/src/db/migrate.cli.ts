@@ -12,7 +12,7 @@ async function runCli() {
     console.error('Gagal menjalankan migrasi:', err);
     process.exit(1);
   } finally {
-    await db.end();
+    await db.end?.();
     process.exit(0);
   }
 }

@@ -1,35 +1,42 @@
 /**
- * Entry point server tunggal untuk Vercel Serverless & Local Development.
+ * Entry point server (local development & host VM).
+ * Menjalankan migrasi skema lalu menyalakan HTTP listener.
+ * Di Vercel, entry point-nya adalah api/index.ts (serverless).
  */
+import { existsSync } from 'node:fs';
+import { createApp, DIST_PATH } from './app.js';
+import { applyMigrations, createDatabase } from './db/connection.js';
 
-import express from 'express';
-import cors from 'cors';
-import { createDatabase, applyMigrations } from './db/connection.js';
+const PORT = Number(process.env.PORT ?? 3001);
 
-// Inisialisasi database dan migrasi PostgreSQL
 const db = createDatabase();
-applyMigrations(db).catch((err) => {
-  console.error('Gagal menjalankan migrasi database saat startup:', err);
+// Skema dibuat/dimutakhirkan sebelum listener aktif.
+await applyMigrations(db);
+
+const { app } = createApp(db);
+
+const server = app.listen(PORT, () => {
+  // eslint-disable-next-line no-console -- log startup.
+  console.log(`API Study Material Organizer berjalan di http://localhost:${PORT}`);
+  // eslint-disable-next-line no-console -- log startup.
+  console.log('Database: PostgreSQL (DATABASE_URL)');
+  // eslint-disable-next-line no-console -- log startup.
+  console.log(
+    existsSync(DIST_PATH)
+      ? `Frontend (build) disajikan di http://localhost:${PORT}`
+      : 'Frontend belum dibangun. Jalankan "npm run build" terlebih dahulu, atau "npm run dev" untuk mode development.',
+  );
 });
 
-// Buat aplikasi Express
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-
-// Rute dasar untuk pengecekan kesehatan server / tes koneksi
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Ekspor app agar Vercel Serverless dapat menangkap request HTTP
-export default app;
-
-// Jika dijalankan secara lokal (bukan di Vercel), jalankan HTTP listener biasa
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = Number(process.env.PORT ?? 3001);
-  app.listen(PORT, () => {
-    console.log(`API berjalan di http://localhost:${PORT}`);
+/** Tutup server & database dengan rapi saat proses dihentikan (Ctrl+C). */
+function shutdown(signal: string): void {
+  // eslint-disable-next-line no-console -- log shutdown.
+  console.log(`\nMenerima ${signal}, menutup server...`);
+  server.close(() => {
+    void db.end?.();
+    process.exit(0);
   });
 }
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

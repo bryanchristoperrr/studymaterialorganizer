@@ -4,7 +4,7 @@ import {
   normalizeAuthors,
   normalizeDoi,
   normalizeUrl,
-} from '../src/utils/normalize';
+} from '../src/utils/normalize.js';
 
 describe('normalizeUrl (B2)', () => {
   it('lowercase host dan membuang trailing slash', () => {

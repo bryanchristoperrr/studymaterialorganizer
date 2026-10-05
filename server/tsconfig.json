@@ -15,11 +15,10 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
-    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "shared/*": ["../shared/*"]
     }
   },
-  "include": ["src", "tests", "../shared"]
+  "include": ["api", "src", "tests", "../shared"]
 }

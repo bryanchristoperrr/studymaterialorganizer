@@ -4,7 +4,8 @@ Aplikasi perpustakaan pribadi untuk mengumpulkan referensi skripsi dan tugas akh
 tautan (Google Drive, PDF, web), nama jurnal, mata kuliah terkait, dan ringkasan singkat.
 
 Dibangun dengan **React 18 + TypeScript + Vite** (frontend), **Node.js + Express +
-TypeScript** (backend), dan **SQLite** (penyimpanan lokal, tanpa server database terpisah).
+TypeScript** (backend), dan **PostgreSQL** (Supabase di produksi, PGlite
+in-memory untuk test).
 
 ## Fitur (Fase M1 — CRUD inti)
 
@@ -29,8 +30,8 @@ TypeScript** (backend), dan **SQLite** (penyimpanan lokal, tanpa server database
 
 - **Node.js ≥ 22** (satu runtime untuk frontend dan backend)
 - npm ≥ 10
-- `better-sqlite3` menyertakan prebuilt binary untuk Windows / Linux / macOS;
-  di platform lain mungkin perlu toolchain build (Python + C++ compiler).
+- **DATABASE_URL** — connection string PostgreSQL. Untuk produksi gunakan
+  Supabase (Project Settings → Database → URI, port 6543/pooled).
 
 ## Instalasi & Menjalankan
 
@@ -38,6 +39,9 @@ TypeScript** (backend), dan **SQLite** (penyimpanan lokal, tanpa server database
 # instal dependensi (frontend + server)
 npm install
 npm --prefix server install
+
+# salin connection string PostgreSQL ke file .env di server/
+echo "DATABASE_URL=postgresql://..." > server/.env
 
 # development (kedua proses sekaligus, satu terminal)
 npm run dev:all
@@ -55,14 +59,14 @@ Buka **http://localhost:3001** (production) atau **http://localhost:5173** (deve
 > Jangan buka `index.html` langsung dari filesystem — module script diblokir dari
 > `file://` dan server statis tanpa MIME type yang benar akan menolak aset `.js`.
 
-Database SQLite dibuat otomatis di `server/data/app.db` saat server pertama kali
-dijalankan (folder `data/` diabaikan git).
+Skema database dibuat otomatis (migrasi idempoten) saat server pertama kali
+dijalankan.
 
 ## Pengujian
 
 ```bash
 npm test                    # frontend (Vitest + React Testing Library)
-npm --prefix server test    # backend (Vitest + supertest, SQLite in-memory nyata)
+npm --prefix server test    # backend (Vitest + supertest, PGlite = PostgreSQL in-memory nyata)
 ```
 
 68 test mencakup unit (normalisasi URL/DOI), integrasi service (aturan bisnis
@@ -78,19 +82,42 @@ dengan database sungguhan, bukan mock), dan kontrak API (status code + envelope 
 │   ├── services/      # Lapisan API (komponen tidak pernah fetch langsung)
 │   └── hooks/         # useMaterials, useAsyncData, useDebouncedValue
 ├── server/
+│   ├── api/           # Entry serverless Vercel (melayani /api/*)
 │   └── src/
-│       ├── repositories/  # Akses data (SQL, parameter binding)
+│       ├── repositories/  # Akses data (SQL, parameter binding $n)
 │       ├── services/      # Logika bisnis (aturan B1–B10)
-│       ├── controllers/   # HTTP → service
-│       ├── middleware/    # Validasi Zod, error handler
-│       └── db/            # Koneksi + migrasi otomatis
+│       ├── controllers/   # HTTP → service (async, dibungkus asyncHandler)
+│       ├── middleware/    # Validasi Zod, async handler, error handler
+│       └── db/            # Koneksi pg + migrasi otomatis
 └── dist/              # Hasil build (dibuat oleh npm run build)
 ```
 
 Arsitektur berlapis: `UI → Service → Controller → Service → Repository → Database`.
 Detail aturan bisnis (B1–B10), model data, dan kontrak API ada di
-[`ARCHITECTURE.md`](ARCHITECTURE.md); rancangan fitur lanjutan (FTS5, link health
+[`ARCHITECTURE.md`](ARCHITECTURE.md); rancangan fitur lanjutan (FTS, link health
 check, attachment, spaced repetition, backup) ada di [`SPEC.md`](SPEC.md).
+
+## Deploy ke Vercel (dua proyek)
+
+Frontend dan backend dideploy sebagai **dua proyek Vercel** terpisah
+(masing-masing punya `package.json`).
+
+**1. Backend** — proyek baru, *Root Directory* = `server/`:
+- Framework preset: Other (Vercel otomatis mendeteksi `api/index.ts`
+  sebagai Serverless Function Node.js 20 via `server/vercel.json`).
+- Environment Variable produksi: `DATABASE_URL` = connection string Supabase.
+- Migrasi skema otomatis dijalankan saat *cold start*.
+
+**2. Frontend** — proyek baru, *Root Directory* = repo root:
+- Build Command: `npm run build`, Output Directory: `dist`
+  (sudah ada di `vercel.json`).
+- Environment Variable **saat build**: `VITE_API_URL` =
+  `https://<nama-proyek-backend>.vercel.app/api` (di-bake ke bundle,
+  jadi harus diset sebelum build pertama dan setiap kali berubah).
+
+`apiClient.ts` memakai `VITE_API_URL` (default `/api` untuk satu-server
+lokal), dan backend mengaktifkan `cors()` — cross-origin antar kedua
+proyek berjalan tanpa konfigurasi tambahan.
 
 ## API (ringkas)
 

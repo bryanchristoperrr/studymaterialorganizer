@@ -1,13 +1,17 @@
 /**
  * Definisi route HTTP. Route hanya memasang middleware + controller; validasi
  * bentuk request terjadi di middleware `validate`.
+ *
+ * Controller async dibungkus `asyncHandler` agar rejection
+ * diteruskan ke errorHandler global.
  */
 import { Router } from 'express';
 import { z } from 'zod';
-import { createMaterialSchema, materialsQuerySchema, updateMaterialSchema } from '../../../shared/schemas';
-import { createMaterialController } from '../controllers/materialController';
-import { validate } from '../middleware/validate';
-import type { MaterialService } from '../services/materialService';
+import { createMaterialSchema, materialsQuerySchema, updateMaterialSchema } from '../../../shared/schemas.js';
+import { createMaterialController } from '../controllers/materialController.js';
+import { validate } from '../middleware/validate.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import type { MaterialService } from '../services/materialService.js';
 
 /** :id harus berupa string non-kosong (UUID berawalan 'm_' dari service). */
 const idParamSchema = z.object({ id: z.string().min(1, 'ID wajib diisi') });
@@ -28,15 +32,15 @@ export function createMaterialRoutes(service: MaterialService): Router {
 
   // PENTING: /duplicate-check didaftarkan sebelum /:id agar tidak tertangkap
   // sebagai param id.
-  router.post('/duplicate-check', validate(duplicateCheckSchema, 'body'), controller.checkDuplicates);
+  router.post('/duplicate-check', validate(duplicateCheckSchema, 'body'), asyncHandler(controller.checkDuplicates));
 
-  router.get('/', validate(materialsQuerySchema, 'query'), controller.list);
-  router.post('/', validate(createMaterialSchema, 'body'), controller.create);
-  router.get('/:id', validate(idParamSchema, 'params'), controller.getById);
-  router.patch('/:id', validate(idParamSchema, 'params'), validate(updateMaterialSchema, 'body'), controller.update);
-  router.delete('/:id', validate(idParamSchema, 'params'), controller.remove);
-  router.post('/:id/restore', validate(idParamSchema, 'params'), controller.restore);
-  router.delete('/:id/purge', validate(idParamSchema, 'params'), controller.purge);
+  router.get('/', validate(materialsQuerySchema, 'query'), asyncHandler(controller.list));
+  router.post('/', validate(createMaterialSchema, 'body'), asyncHandler(controller.create));
+  router.get('/:id', validate(idParamSchema, 'params'), asyncHandler(controller.getById));
+  router.patch('/:id', validate(idParamSchema, 'params'), validate(updateMaterialSchema, 'body'), asyncHandler(controller.update));
+  router.delete('/:id', validate(idParamSchema, 'params'), asyncHandler(controller.remove));
+  router.post('/:id/restore', validate(idParamSchema, 'params'), asyncHandler(controller.restore));
+  router.delete('/:id/purge', validate(idParamSchema, 'params'), asyncHandler(controller.purge));
 
   return router;
 }

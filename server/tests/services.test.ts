@@ -1,13 +1,14 @@
 /**
- * Test integrasi service layer memakai SQLite in-memory sungguhan.
- * Setiap kasus memakai context baru agar data tidak saling memengaruhi.
+ * Test integrasi service layer memakai PGlite (PostgreSQL in-memory
+ * sungguhan). Setiap kasus memakai context baru agar data tidak
+ * saling memengaruhi.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createMaterialSchema, updateMaterialSchema } from '../../shared/schemas';
-import type { MaterialsQuery } from '../../shared/schemas';
-import type { AppContext } from '../src/app';
-import { ConflictError, NotFoundError, ValidationError } from '../src/utils/errors';
-import { createTestContext } from './helpers';
+import { createMaterialSchema, updateMaterialSchema } from '../../shared/schemas.js';
+import type { MaterialsQuery } from '../../shared/schemas.js';
+import type { AppContext } from '../src/app.js';
+import { ConflictError, NotFoundError, ValidationError } from '../src/utils/errors.js';
+import { createTestContext } from './helpers.js';
 
 let ctx: AppContext;
 
@@ -24,15 +25,15 @@ function parseUpdate(payload: Record<string, unknown>) {
   return result.data;
 }
 
-beforeEach(() => {
-  ctx = createTestContext();
+beforeEach(async () => {
+  ctx = await createTestContext();
 });
 
 describe('MaterialService.create', () => {
-  it('menyimpan material beserta relasi course dan tag (B9)', () => {
-    const course = ctx.courseService.createCourse({ code: 'IF401', name: 'Kecerdasan Artifisial' });
+  it('menyimpan material beserta relasi course dan tag (B9)', async () => {
+    const course = await ctx.courseService.createCourse({ code: 'IF401', name: 'Kecerdasan Artifisial' });
 
-    const material = ctx.materialService.create(
+    const material = await ctx.materialService.create(
       parseCreate({
         type: 'pdf',
         title: 'Bab 3 Skripsi',
@@ -46,14 +47,14 @@ describe('MaterialService.create', () => {
     expect(material.status).toBe('active');
     expect(material.importance).toBe(2);
 
-    const detail = ctx.materialService.getById(material.id);
+    const detail = await ctx.materialService.getById(material.id);
     expect(detail.courseIds).toEqual([course.id]);
     // Tag dinormalisasi ke lowercase.
     expect(detail.tagNames).toEqual(['skripsi', 'statistika']);
   });
 
-  it('menormalisasi URL dan DOI sebelum menyimpan (B2, B4)', () => {
-    const material = ctx.materialService.create(
+  it('menormalisasi URL dan DOI sebelum menyimpan (B2, B4)', async () => {
+    const material = await ctx.materialService.create(
       parseCreate({
         type: 'web',
         title: 'Artikel Uji Autentik',
@@ -66,47 +67,47 @@ describe('MaterialService.create', () => {
     expect(material.doi).toBe('10.1000/abc');
   });
 
-  it('menolak URL wajib untuk tipe selain book (B1, ditegakkan service)', () => {
+  it('menolak URL wajib untuk tipe selain book (B1, ditegakkan service)', async () => {
     // Sengaja memanggil service tanpa melewati skema, untuk membuktikan aturan
     // business tetap ditegakkan meski dipanggil dari luar HTTP.
-    expect(() =>
+    await expect(
       ctx.materialService.create({ type: 'pdf', title: 'Tanpa URL' } as never),
-    ).toThrow(ValidationError);
+    ).rejects.toThrow(ValidationError);
   });
 
-  it('mengizinkan book tanpa URL (B1)', () => {
-    const material = ctx.materialService.create(
+  it('mengizinkan book tanpa URL (B1)', async () => {
+    const material = await ctx.materialService.create(
       parseCreate({ type: 'book', title: 'Buku Statistika Modern' }),
     );
     expect(material.url).toBeNull();
   });
 
-  it('menolak DOI duplikat (B6)', () => {
-    ctx.materialService.create(
+  it('menolak DOI duplikat (B6)', async () => {
+    await ctx.materialService.create(
       parseCreate({ type: 'web', title: 'Artikel Satu', url: 'https://a.example/1', doi: '10.1000/x' }),
     );
 
-    expect(() =>
+    await expect(
       ctx.materialService.create(
         parseCreate({ type: 'web', title: 'Artikel Kembar', url: 'https://a.example/2', doi: '10.1000/x' }),
       ),
-    ).toThrow(ConflictError);
+    ).rejects.toThrow(ConflictError);
   });
 
-  it('menolak URL duplikat setelah normalisasi (B2 + B6)', () => {
-    ctx.materialService.create(
+  it('menolak URL duplikat setelah normalisasi (B2 + B6)', async () => {
+    await ctx.materialService.create(
       parseCreate({ type: 'web', title: 'Sumber A', url: 'https://a.example/artikel?utm_source=x' }),
     );
 
-    expect(() =>
+    await expect(
       ctx.materialService.create(
         parseCreate({ type: 'web', title: 'Sumber B', url: 'https://a.example/artikel' }),
       ),
-    ).toThrow(ConflictError);
+    ).rejects.toThrow(ConflictError);
   });
 
-  it('menolak courseId yang tidak dikenal', () => {
-    expect(() =>
+  it('menolak courseId yang tidak dikenal', async () => {
+    await expect(
       ctx.materialService.create(
         parseCreate({
           type: 'pdf',
@@ -115,17 +116,17 @@ describe('MaterialService.create', () => {
           courseIds: ['c_tidak_ada'],
         }),
       ),
-    ).toThrow(ValidationError);
+    ).rejects.toThrow(ValidationError);
   });
 });
 
 describe('MaterialService.update', () => {
-  it('menaikkan version pada setiap update (B8)', () => {
-    const created = ctx.materialService.create(
+  it('menaikkan version pada setiap update (B8)', async () => {
+    const created = await ctx.materialService.create(
       parseCreate({ type: 'pdf', title: 'Judul Lama', url: 'https://a.example/1' }),
     );
 
-    const updated = ctx.materialService.update(
+    const updated = await ctx.materialService.update(
       created.id,
       parseUpdate({ title: 'Judul Baru', version: created.version }),
     );
@@ -134,21 +135,21 @@ describe('MaterialService.update', () => {
     expect(updated.version).toBe(2);
   });
 
-  it('menolak update dengan version lama (B8)', () => {
-    const created = ctx.materialService.create(
+  it('menolak update dengan version lama (B8)', async () => {
+    const created = await ctx.materialService.create(
       parseCreate({ type: 'pdf', title: 'Judul Asli', url: 'https://a.example/1' }),
     );
 
-    ctx.materialService.update(created.id, parseUpdate({ title: 'Judul Baru', version: 1 }));
+    await ctx.materialService.update(created.id, parseUpdate({ title: 'Judul Baru', version: 1 }));
 
-    expect(() =>
+    await expect(
       ctx.materialService.update(created.id, parseUpdate({ title: 'Judul Lain', version: 1 })),
-    ).toThrow(ConflictError);
+    ).rejects.toThrow(ConflictError);
   });
 
-  it('PATCH sebagian tidak menghapus relasi course/tag yang tidak dikirim', () => {
-    const course = ctx.courseService.createCourse({ code: 'IF402', name: 'Basis Data' });
-    const created = ctx.materialService.create(
+  it('PATCH sebagian tidak menghapus relasi course/tag yang tidak dikirim', async () => {
+    const course = await ctx.courseService.createCourse({ code: 'IF402', name: 'Basis Data' });
+    const created = await ctx.materialService.create(
       parseCreate({
         type: 'pdf',
         title: 'Materi Terhubung',
@@ -158,18 +159,18 @@ describe('MaterialService.update', () => {
       }),
     );
 
-    const updated = ctx.materialService.update(
+    const updated = await ctx.materialService.update(
       created.id,
       parseUpdate({ summary: 'Ringkasan baru', version: created.version }),
     );
 
-    const detail = ctx.materialService.getById(updated.id);
+    const detail = await ctx.materialService.getById(updated.id);
     expect(detail.courseIds).toEqual([course.id]);
     expect(detail.tagNames).toEqual(['db']);
   });
 
-  it('PATCH sebagian tidak mengubah field yang tidak dikirim (termasuk tipe)', () => {
-    const created = ctx.materialService.create(
+  it('PATCH sebagian tidak mengubah field yang tidak dikirim (termasuk tipe)', async () => {
+    const created = await ctx.materialService.create(
       parseCreate({
         type: 'pdf',
         title: 'Tipe Tetap',
@@ -179,7 +180,7 @@ describe('MaterialService.update', () => {
     // URL ber-host Google Drive, tetapi tipe tidak boleh berubah saat update.
     expect(created.type).toBe('pdf');
 
-    const updated = ctx.materialService.update(
+    const updated = await ctx.materialService.update(
       created.id,
       parseUpdate({ summary: 'Ringkasan baru', version: created.version }),
     );
@@ -188,22 +189,22 @@ describe('MaterialService.update', () => {
     expect(updated.summary).toBe('Ringkasan baru');
   });
 
-  it('menolak update material yang tidak ada', () => {
-    expect(() =>
+  it('menolak update material yang tidak ada', async () => {
+    await expect(
       ctx.materialService.update('m_hilang', parseUpdate({ title: 'X Y Z', version: 1 })),
-    ).toThrow(NotFoundError);
+    ).rejects.toThrow(NotFoundError);
   });
 });
 
 describe('MaterialService delete family (B7)', () => {
-  it('soft delete menyembunyikan material dari list lalu bisa di-restore', () => {
-    const created = ctx.materialService.create(
+  it('soft delete menyembunyikan material dari list lalu bisa di-restore', async () => {
+    const created = await ctx.materialService.create(
       parseCreate({ type: 'pdf', title: 'Akan Dihapus', url: 'https://a.example/3' }),
     );
 
-    ctx.materialService.softDelete(created.id);
+    await ctx.materialService.softDelete(created.id);
 
-    const list = ctx.materialService.list({
+    const list = await ctx.materialService.list({
       sort: 'updatedAt',
       order: 'desc',
       page: 1,
@@ -212,7 +213,7 @@ describe('MaterialService delete family (B7)', () => {
     } as never);
     expect(list.items).toHaveLength(0);
 
-    const trash = ctx.materialService.list({
+    const trash = await ctx.materialService.list({
       sort: 'updatedAt',
       order: 'desc',
       page: 1,
@@ -221,13 +222,13 @@ describe('MaterialService delete family (B7)', () => {
     } as never);
     expect(trash.items).toHaveLength(1);
 
-    const restored = ctx.materialService.restore(created.id);
+    const restored = await ctx.materialService.restore(created.id);
     expect(restored.deletedAt).toBeNull();
   });
 
-  it('purge menghapus material beserta relasinya', () => {
-    const course = ctx.courseService.createCourse({ code: 'IF403', name: 'Jaringan' });
-    const created = ctx.materialService.create(
+  it('purge menghapus material beserta relasinya', async () => {
+    const course = await ctx.courseService.createCourse({ code: 'IF403', name: 'Jaringan' });
+    const created = await ctx.materialService.create(
       parseCreate({
         type: 'web',
         title: 'Dihapus Permanen',
@@ -237,20 +238,22 @@ describe('MaterialService delete family (B7)', () => {
       }),
     );
 
-    ctx.materialService.softDelete(created.id);
-    ctx.materialService.purge(created.id);
+    await ctx.materialService.softDelete(created.id);
+    await ctx.materialService.purge(created.id);
 
-    expect(() => ctx.materialService.getById(created.id)).toThrow(NotFoundError);
+    await expect(ctx.materialService.getById(created.id)).rejects.toThrow(NotFoundError);
     // Tag masih ada sebagai master data, namun tidak terikat material mana pun.
-    expect(ctx.tagService.list().map((tag) => tag.name)).toContain('jaringan');
-    expect(ctx.tagService.list().find((tag) => tag.name === 'jaringan')?.materialCount).toBe(0);
+    expect((await ctx.tagService.list()).map((tag) => tag.name)).toContain('jaringan');
+    expect(
+      (await ctx.tagService.list()).find((tag) => tag.name === 'jaringan')?.materialCount,
+    ).toBe(0);
   });
 
-  it('restore material yang tidak ada di recycle bin ditolak', () => {
-    const created = ctx.materialService.create(
+  it('restore material yang tidak ada di recycle bin ditolak', async () => {
+    const created = await ctx.materialService.create(
       parseCreate({ type: 'pdf', title: 'Masih Aktif', url: 'https://a.example/5' }),
     );
-    expect(() => ctx.materialService.restore(created.id)).toThrow(ConflictError);
+    await expect(ctx.materialService.restore(created.id)).rejects.toThrow(ConflictError);
   });
 });
 
@@ -263,8 +266,8 @@ describe('MaterialService.list', () => {
     includeDeleted: false,
   } satisfies MaterialsQuery;
 
-  it('mencari pada judul, ringkasan, dan penulis', () => {
-    ctx.materialService.create(
+  it('mencari pada judul, ringkasan, dan penulis', async () => {
+    await ctx.materialService.create(
       parseCreate({
         type: 'web',
         title: 'Artikel Contoh',
@@ -273,7 +276,7 @@ describe('MaterialService.list', () => {
         summary: 'Tentang regresi',
       }),
     );
-    ctx.materialService.create(
+    await ctx.materialService.create(
       parseCreate({
         type: 'web',
         title: 'Judul Lain',
@@ -283,71 +286,82 @@ describe('MaterialService.list', () => {
       }),
     );
 
-    expect(ctx.materialService.list({ ...(query as MaterialsQuery), search: 'regresi' }).items).toHaveLength(2);
     expect(
-      ctx.materialService.list({ ...(query as MaterialsQuery), search: 'Siti' }).items.map((m) => m.title),
+      (await ctx.materialService.list({ ...(query as MaterialsQuery), search: 'regresi' })).items,
+    ).toHaveLength(2);
+    expect(
+      (await ctx.materialService.list({ ...(query as MaterialsQuery), search: 'Siti' })).items.map(
+        (m) => m.title,
+      ),
     ).toEqual(['Artikel Contoh']);
   });
 
-  it('memfilter berdasarkan tipe, status, dan importance minimum', () => {
-    ctx.materialService.create(
+  it('memfilter berdasarkan tipe, status, dan importance minimum', async () => {
+    await ctx.materialService.create(
       parseCreate({ type: 'pdf', title: 'Penting Sekali', url: 'https://a.example/8', importance: 5 }),
     );
-    ctx.materialService.create(
+    await ctx.materialService.create(
       parseCreate({ type: 'video', title: 'Video Materi', url: 'https://a.example/9' }),
     );
 
-    const result = ctx.materialService.list({ ...(query as MaterialsQuery), type: ['pdf'], importanceMin: 4 });
+    const result = await ctx.materialService.list({
+      ...(query as MaterialsQuery),
+      type: ['pdf'],
+      importanceMin: 4,
+    });
     expect(result.items.map((m) => m.title)).toEqual(['Penting Sekali']);
   });
 
-  it('membatasi hasil per halaman dan mengirim total', () => {
+  it('membatasi hasil per halaman dan mengirim total', async () => {
     for (let index = 0; index < 5; index += 1) {
-      ctx.materialService.create(
+      await ctx.materialService.create(
         parseCreate({ type: 'web', title: `Materi ${index}`, url: `https://a.example/${index}` }),
       );
     }
 
-    const result = ctx.materialService.list({ ...(query as MaterialsQuery), page: 2, limit: 2 });
+    const result = await ctx.materialService.list({ ...(query as MaterialsQuery), page: 2, limit: 2 });
     expect(result.items).toHaveLength(2);
     expect(result.pagination).toMatchObject({ page: 2, limit: 2, total: 5, totalPages: 3 });
   });
 });
 
 describe('CourseService', () => {
-  it('menyimpan kode course dalam huruf besar (B10)', () => {
-    const course = ctx.courseService.createCourse({ code: 'if401', name: 'Kecerdasan Artifisial' });
+  it('menyimpan kode course dalam huruf besar (B10)', async () => {
+    const course = await ctx.courseService.createCourse({ code: 'if401', name: 'Kecerdasan Artifisial' });
     expect(course.code).toBe('IF401');
   });
 
-  it('menolak kode course yang sudah dipakai', () => {
-    ctx.courseService.createCourse({ code: 'IF401', name: 'Kecerdasan Artifisial' });
-    expect(() =>
+  it('menolak kode course yang sudah dipakai', async () => {
+    await ctx.courseService.createCourse({ code: 'IF401', name: 'Kecerdasan Artifisial' });
+    await expect(
       ctx.courseService.createCourse({ code: 'IF401', name: 'Kecerdasan Artifisial Lanjut' }),
-    ).toThrow(ConflictError);
+    ).rejects.toThrow(ConflictError);
   });
 
-  it('menolak semesterId yang tidak dikenal', () => {
-    expect(() =>
+  it('menolak semesterId yang tidak dikenal', async () => {
+    await expect(
       ctx.courseService.createCourse({ code: 'IF405', name: 'Kriptografi', semesterId: 's_x' }),
-    ).toThrow(ValidationError);
+    ).rejects.toThrow(ValidationError);
   });
 
-  it('membentuk label semester otomatis', () => {
-    const semester = ctx.courseService.createSemester({ term: 'ganjil', year: 2024 });
+  it('membentuk label semester otomatis', async () => {
+    const semester = await ctx.courseService.createSemester({ term: 'ganjil', year: 2024 });
     expect(semester.label).toBe('2024 Ganjil');
   });
 
-  it('menolak semester duplikat', () => {
-    ctx.courseService.createSemester({ term: 'genap', year: 2024 });
-    expect(() => ctx.courseService.createSemester({ term: 'genap', year: 2024 })).toThrow(
+  it('menolak semester duplikat', async () => {
+    await ctx.courseService.createSemester({ term: 'genap', year: 2024 });
+    await expect(ctx.courseService.createSemester({ term: 'genap', year: 2024 })).rejects.toThrow(
       ConflictError,
     );
   });
 
-  it('menghapus course tanpa menghapus material yang merujuknya', () => {
-    const course = ctx.courseService.createCourse({ code: 'IF410', name: 'Pemrograman Berorientasi Objek' });
-    const material = ctx.materialService.create(
+  it('menghapus course tanpa menghapus material yang merujuknya', async () => {
+    const course = await ctx.courseService.createCourse({
+      code: 'IF410',
+      name: 'Pemrograman Berorientasi Objek',
+    });
+    const material = await ctx.materialService.create(
       parseCreate({
         type: 'slide',
         title: 'Slide OOP',
@@ -356,9 +370,9 @@ describe('CourseService', () => {
       }),
     );
 
-    ctx.courseService.deleteCourse(course.id);
+    await ctx.courseService.deleteCourse(course.id);
 
-    const detail = ctx.materialService.getById(material.id);
+    const detail = await ctx.materialService.getById(material.id);
     expect(detail.id).toBe(material.id);
     expect(detail.courseIds).toEqual([]);
   });

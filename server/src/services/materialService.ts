@@ -18,7 +18,7 @@ import type {
   CreateMaterialInput,
   MaterialsQuery,
   UpdateMaterialInput,
-} from '../../../shared/schemas';
+} from '../../../shared/schemas.js';
 import {
   IMPORTANCE_DEFAULT,
   type Material,
@@ -26,12 +26,12 @@ import {
   type MaterialStatus,
   type MaterialType,
   type Importance,
-} from '../../../shared/types';
-import type { CourseRepository } from '../repositories/courseRepository';
-import type { MaterialCreateRow, MaterialRepository } from '../repositories/materialRepository';
-import type { TagRepository } from '../repositories/tagRepository';
-import { ConflictError, NotFoundError, ValidationError } from '../utils/errors';
-import { inferTypeFromUrl, normalizeAuthors, normalizeDoi, normalizeUrl } from '../utils/normalize';
+} from '../../../shared/types.js';
+import type { CourseRepository } from '../repositories/courseRepository.js';
+import type { MaterialCreateRow, MaterialRepository } from '../repositories/materialRepository.js';
+import type { TagRepository } from '../repositories/tagRepository.js';
+import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
+import { inferTypeFromUrl, normalizeAuthors, normalizeDoi, normalizeUrl } from '../utils/normalize.js';
 
 /** Bentuk input setelah dinormalisasi, sebelum masuk repository. */
 interface NormalizedMaterial {
@@ -73,8 +73,8 @@ export class MaterialService {
   /* ------------------------------- Read ------------------------------- */
 
   /** List + pagination info untuk response API. */
-  list(query: MaterialsQuery) {
-    const { items, total } = this.materials.findMany(query);
+  async list(query: MaterialsQuery) {
+    const { items, total } = await this.materials.findMany(query);
     const totalPages = Math.max(1, Math.ceil(total / query.limit));
 
     return {
@@ -84,8 +84,8 @@ export class MaterialService {
   }
 
   /** Detail material, termasuk course & tag terkait. */
-  getById(id: string) {
-    const material = this.materials.findById(id, { includeDeleted: true });
+  async getById(id: string) {
+    const material = await this.materials.findById(id, { includeDeleted: true });
     if (!material) {
       throw new NotFoundError(`Material dengan id "${id}" tidak ditemukan.`);
     }
@@ -97,34 +97,34 @@ export class MaterialService {
 
     return {
       ...material,
-      courseIds: this.materials.findCourseIds(id),
-      tagNames: this.materials.findTagNames(id),
+      courseIds: await this.materials.findCourseIds(id),
+      tagNames: await this.materials.findTagNames(id),
     };
   }
 
   /* ------------------------------ Create ------------------------------ */
 
-  create(input: CreateMaterialInput): Material {
+  async create(input: CreateMaterialInput): Promise<Material> {
     const normalized = this.normalizeInput(input);
 
-    this.assertNoDuplicate({ doi: normalized.doi, url: normalized.url });
-    const courseIds = this.resolveCourseIds(input.courseIds);
-    const tagIds = this.resolveTagIds(input.tagNames ?? []);
+    await this.assertNoDuplicate({ doi: normalized.doi, url: normalized.url });
+    const courseIds = await this.resolveCourseIds(input.courseIds);
+    const tagIds = await this.resolveTagIds(input.tagNames ?? []);
 
     const row: MaterialCreateRow & { id: string } = { id: `m_${randomUUID()}`, ...normalized };
-    const material = this.materials.insert(row);
+    const material = await this.materials.insert(row);
 
     // Relasi ditulis setelah row utama ada (foreign key).
-    this.materials.replaceCourseLinks(material.id, courseIds);
-    this.materials.replaceTagLinks(material.id, tagIds);
+    await this.materials.replaceCourseLinks(material.id, courseIds);
+    await this.materials.replaceTagLinks(material.id, tagIds);
 
     return material;
   }
 
   /* ------------------------------ Update ------------------------------ */
 
-  update(id: string, input: UpdateMaterialInput): Material {
-    const existing = this.materials.findById(id);
+  async update(id: string, input: UpdateMaterialInput): Promise<Material> {
+    const existing = await this.materials.findById(id);
     if (!existing) {
       throw new NotFoundError(`Material dengan id "${id}" tidak ditemukan.`);
     }
@@ -144,26 +144,28 @@ export class MaterialService {
     }
 
     const normalized = this.normalizeInput(input, existing);
-    this.assertNoDuplicate({ doi: normalized.doi, url: normalized.url }, id);
+    await this.assertNoDuplicate({ doi: normalized.doi, url: normalized.url }, id);
 
     // Relasi hanya ditulis ulang bila field-nya benar-benar dikirim,
     // supaya PATCH sebagian tidak menghapus relasi lama.
     const courseIds =
       input.courseIds === undefined
-        ? this.materials.findCourseIds(id)
-        : this.resolveCourseIds(input.courseIds);
+        ? await this.materials.findCourseIds(id)
+        : await this.resolveCourseIds(input.courseIds);
     const tagIds =
       input.tagNames === undefined
-        ? this.materials.findTagNames(id).map((name) => this.ensureTagId(name))
-        : this.resolveTagIds(input.tagNames);
+        ? await Promise.all(
+            (await this.materials.findTagNames(id)).map((name) => this.ensureTagId(name)),
+          )
+        : await this.resolveTagIds(input.tagNames);
 
-    const updated = this.materials.update(id, normalized);
+    const updated = await this.materials.update(id, normalized);
     if (!updated) {
       throw new NotFoundError(`Material dengan id "${id}" tidak ditemukan.`);
     }
 
-    this.materials.replaceCourseLinks(id, courseIds);
-    this.materials.replaceTagLinks(id, tagIds);
+    await this.materials.replaceCourseLinks(id, courseIds);
+    await this.materials.replaceTagLinks(id, tagIds);
 
     return updated;
   }
@@ -171,43 +173,43 @@ export class MaterialService {
   /* --------------------------- Delete family -------------------------- */
 
   /** B7: soft delete — item pindah ke Recycle Bin, tidak hilang permanen. */
-  softDelete(id: string): void {
-    const material = this.materials.findById(id);
+  async softDelete(id: string): Promise<void> {
+    const material = await this.materials.findById(id);
     if (!material) {
       throw new NotFoundError(`Material dengan id "${id}" tidak ditemukan.`);
     }
-    this.materials.softDelete(id);
+    await this.materials.softDelete(id);
   }
 
-  restore(id: string): Material {
-    const material = this.materials.findById(id, { includeDeleted: true });
+  async restore(id: string): Promise<Material> {
+    const material = await this.materials.findById(id, { includeDeleted: true });
     if (!material) {
       throw new NotFoundError(`Material dengan id "${id}" tidak ditemukan.`);
     }
     if (!material.deletedAt) {
       throw new ConflictError('Material ini tidak ada di Recycle Bin.');
     }
-    this.materials.restore(id);
-    return this.materials.findById(id) as Material;
+    await this.materials.restore(id);
+    return (await this.materials.findById(id)) as Material;
   }
 
-  purge(id: string): void {
-    const material = this.materials.findById(id, { includeDeleted: true });
+  async purge(id: string): Promise<void> {
+    const material = await this.materials.findById(id, { includeDeleted: true });
     if (!material) {
       throw new NotFoundError(`Material dengan id "${id}" tidak ditemukan.`);
     }
-    this.materials.purge(id);
+    await this.materials.purge(id);
   }
 
   /**
    * Kandidat duplikat berdasarkan DOI / URL ternormalisasi.
    * Dipakai endpoint duplicate-check agar form bisa memberi peringatan dini.
    */
-  findDuplicates(criteria: { doi?: string | null; url?: string | null }): Material | null {
+  async findDuplicates(criteria: { doi?: string | null; url?: string | null }): Promise<Material | null> {
     const doi = normalizeDoi(criteria.doi ?? null);
     const url = normalizeUrl(criteria.url ?? null);
     if (!doi && !url) return null;
-    return (doi ? this.materials.findByDoi(doi) : null) ?? (url ? this.materials.findByUrl(url) : null);
+    return (doi ? await this.materials.findByDoi(doi) : null) ?? (url ? await this.materials.findByUrl(url) : null);
   }
 
   /* --------------------------- Helper internals ------------------------ */
@@ -274,12 +276,12 @@ export class MaterialService {
   }
 
   /** B6: DOI atau URL yang sudah dipakai material lain → 409. */
-  private assertNoDuplicate(
+  private async assertNoDuplicate(
     criteria: { doi?: string | null; url?: string | null },
     excludeId?: string,
-  ): void {
+  ): Promise<void> {
     if (criteria.doi) {
-      const existing = this.materials.findByDoi(criteria.doi, excludeId);
+      const existing = await this.materials.findByDoi(criteria.doi, excludeId);
       if (existing) {
         throw new ConflictError(
           'Materi dengan DOI yang sama sudah ada.',
@@ -295,7 +297,7 @@ export class MaterialService {
     }
 
     if (criteria.url) {
-      const existing = this.materials.findByUrl(criteria.url, excludeId);
+      const existing = await this.materials.findByUrl(criteria.url, excludeId);
       if (existing) {
         throw new ConflictError(
           'Materi dengan URL yang sama sudah ada.',
@@ -312,10 +314,10 @@ export class MaterialService {
   }
 
   /** Pastikan semua courseIds benar-benar ada sebelum relasi ditulis. */
-  private resolveCourseIds(courseIds: string[] | undefined): string[] {
+  private async resolveCourseIds(courseIds: string[] | undefined): Promise<string[]> {
     if (!courseIds || courseIds.length === 0) return [];
     const unique = [...new Set(courseIds)];
-    const existing = this.courses.findExistingIds(unique);
+    const existing = await this.courses.findExistingIds(unique);
 
     const missing = unique.filter((id) => !existing.has(id));
     if (missing.length > 0) {
@@ -327,14 +329,20 @@ export class MaterialService {
   }
 
   /** B9: tag baru dibuat otomatis, tag lama dipakai kembali. */
-  private resolveTagIds(tagNames: string[]): string[] {
+  private async resolveTagIds(tagNames: string[]): Promise<string[]> {
     const names = [...new Set(tagNames.map((name) => name.trim().toLowerCase()).filter(Boolean))];
-    return names.map((name) => this.ensureTagId(name));
+    const ids: string[] = [];
+    for (const name of names) {
+      ids.push(await this.ensureTagId(name));
+    }
+    return ids;
   }
 
-  private ensureTagId(name: string): string {
+  private async ensureTagId(name: string): Promise<string> {
     const normalized = name.trim().toLowerCase();
-    const existing = this.tags.findByName(normalized);
-    return existing ? existing.id : this.tags.insert({ id: `t_${randomUUID()}`, name: normalized }).id;
+    const existing = await this.tags.findByName(normalized);
+    if (existing) return existing.id;
+    const created = await this.tags.insert({ id: `t_${randomUUID()}`, name: normalized });
+    return created.id;
   }
 }

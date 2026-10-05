@@ -4,8 +4,8 @@
  */
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AppContext } from '../src/app';
-import { createTestContext } from './helpers';
+import type { AppContext } from '../src/app.js';
+import { createTestContext } from './helpers.js';
 
 let ctx: AppContext;
 
@@ -16,8 +16,8 @@ const validMaterial = {
   tagNames: ['ujian'],
 };
 
-beforeEach(() => {
-  ctx = createTestContext();
+beforeEach(async () => {
+  ctx = await createTestContext();
 });
 
 describe('GET /api/health', () => {

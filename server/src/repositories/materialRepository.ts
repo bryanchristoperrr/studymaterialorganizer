@@ -2,9 +2,14 @@
  * Repository material: satu-satunya tempat yang menulis SQL untuk tabel
  * `materials` dan tabel relasinya. Tidak ada logika bisnis di sini —
  * hanya pemetaan baris, filter, dan pagination.
+ *
+ * Dialek PostgreSQL: parameter bernomor ($1, $2, …), NOW(),
+ * ON CONFLICT DO NOTHING, dan ILIKE (case-insensitive seperti
+ * SQLite LIKE).
  */
-import type { Db } from '../db/connection';
-import type { MaterialsQuery } from '../../../shared/schemas';
+import type { Db, DbClient, QueryResult } from '../db/connection.js';
+import { withTransaction } from '../db/transaction.js';
+import type { MaterialsQuery } from '../../../shared/schemas.js';
 import type {
   Importance,
   Material,
@@ -12,8 +17,8 @@ import type {
   MaterialStatus,
   MaterialType,
   MaterialWithRelations,
-} from '../../../shared/types';
-import { DatabaseError } from '../utils/errors';
+} from '../../../shared/types.js';
+import { DatabaseError } from '../utils/errors.js';
 
 /** Bentuk baris mentah di tabel materials (snake_case). */
 interface MaterialRow {
@@ -44,7 +49,9 @@ interface MaterialRow {
 const SORT_COLUMNS: Record<MaterialsQuery['sort'], string> = {
   updatedAt: 'm.updated_at',
   createdAt: 'm.created_at',
-  title: 'm.title COLLATE NOCASE',
+  // lower() menggantikan COLLATE NOCASE (khas SQLite) agar
+  // pengurutan tetap case-insensitive di PostgreSQL.
+  title: 'lower(m.title)',
   importance: 'm.importance',
   deadline: 'm.deadline_at',
   status: 'm.status',
@@ -57,8 +64,31 @@ export type MaterialCreateRow = Omit<
 
 export type MaterialUpdateRow = Partial<MaterialCreateRow>;
 
+/**
+ * Masukkan nilai ke daftar parameter dan kembalikan placeholder
+ * bernomor ($n) untuk tiap nilai.
+ */
+function bind(params: unknown[], values: unknown[]): string[] {
+  const start = params.length;
+  params.push(...values);
+  return values.map((_, index) => `$${start + index + 1}`);
+}
+
+/** pg mengembalikan Date untuk kolom TIMESTAMP; normalisasi ke string ISO. */
+function toIso(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
 export class MaterialRepository {
   constructor(private readonly db: Db) {}
+
+  /** Jalankan SELECT dan kembalikan baris bertipe. */
+  private async select<T>(text: string, params: unknown[] = []): Promise<T[]> {
+    const result: QueryResult = await this.db.query(text, params);
+    return result.rows as unknown as T[];
+  }
 
   /** Baris → entity domain (camelCase). */
   private static mapRow(row: MaterialRow): Material {
@@ -79,11 +109,11 @@ export class MaterialRepository {
       summary: row.summary,
       importance: row.importance as Importance,
       status: row.status as MaterialStatus,
-      deadlineAt: row.deadline_at,
+      deadlineAt: toIso(row.deadline_at),
       version: row.version,
-      deletedAt: row.deleted_at,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      deletedAt: toIso(row.deleted_at),
+      createdAt: toIso(row.created_at) ?? '',
+      updatedAt: toIso(row.updated_at) ?? '',
     };
   }
 
@@ -100,86 +130,87 @@ export class MaterialRepository {
     }
 
     if (query.search) {
-      // Pencarian LIKE pada kolom yang relevan (FTS5 menyusul di fase M2).
-      // Nilai yang sama diulang 4x karena setiap kolom memakai placeholder sendiri.
-      clauses.push(
-        '(m.title LIKE ? OR m.summary LIKE ? OR m.source_name LIKE ? OR m.authors LIKE ?)',
-      );
+      // ILIKE = case-insensitive (SQLite LIKE juga case-insensitive
+      // untuk ASCII). Nilai yang sama diulang 4x karena setiap
+      // kolom memakai placeholder sendiri.
       const like = `%${query.search}%`;
-      params.push(like, like, like, like);
+      const ph = bind(params, [like, like, like, like]);
+      clauses.push(
+        `(m.title ILIKE ${ph[0]!} OR m.summary ILIKE ${ph[1]!} OR m.source_name ILIKE ${ph[2]!} OR m.authors ILIKE ${ph[3]!})`,
+      );
     }
 
     if (query.type?.length) {
-      clauses.push(`m.type IN (${query.type.map(() => '?').join(',')})`);
-      params.push(...query.type);
+      const ph = bind(params, query.type);
+      clauses.push(`m.type IN (${ph.join(',')})`);
     }
 
     if (query.status?.length) {
-      clauses.push(`m.status IN (${query.status.map(() => '?').join(',')})`);
-      params.push(...query.status);
+      const ph = bind(params, query.status);
+      clauses.push(`m.status IN (${ph.join(',')})`);
     }
 
     if (query.importanceMin !== undefined) {
-      clauses.push('m.importance >= ?');
-      params.push(query.importanceMin);
+      const ph = bind(params, [query.importanceMin]);
+      clauses.push(`m.importance >= ${ph[0]!}`);
     }
 
     if (query.courseId?.length) {
+      const ph = bind(params, query.courseId);
       clauses.push(
-        `m.id IN (SELECT material_id FROM material_courses WHERE course_id IN (${query.courseId
-          .map(() => '?')
-          .join(',')}))`,
+        `m.id IN (SELECT material_id FROM material_courses WHERE course_id IN (${ph.join(',')}))`,
       );
-      params.push(...query.courseId);
     }
 
     if (query.semesterId?.length) {
+      const ph = bind(params, query.semesterId);
       clauses.push(
         `m.id IN (
            SELECT mc.material_id
            FROM material_courses mc
            JOIN courses c ON c.id = mc.course_id
-           WHERE c.semester_id IN (${query.semesterId.map(() => '?').join(',')})
+           WHERE c.semester_id IN (${ph.join(',')})
          )`,
       );
-      params.push(...query.semesterId);
     }
 
     if (query.tagId?.length) {
+      const ph = bind(params, query.tagId);
       clauses.push(
-        `m.id IN (SELECT material_id FROM material_tags WHERE tag_id IN (${query.tagId
-          .map(() => '?')
-          .join(',')}))`,
+        `m.id IN (SELECT material_id FROM material_tags WHERE tag_id IN (${ph.join(',')}))`,
       );
-      params.push(...query.tagId);
     }
 
     return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
   }
 
   /** List material + total untuk pagination, dilengkapi relasi course & tag. */
-  findMany(query: MaterialsQuery): { items: MaterialWithRelations[]; total: number } {
+  async findMany(query: MaterialsQuery): Promise<{ items: MaterialWithRelations[]; total: number }> {
     const { where, params } = MaterialRepository.buildFilters(query);
     const sortColumn = SORT_COLUMNS[query.sort];
     const direction = query.order === 'asc' ? 'ASC' : 'DESC';
     const offset = (query.page - 1) * query.limit;
 
     try {
-      const totalRow = this.db
-        .prepare(`SELECT COUNT(*) AS total FROM materials m ${where}`)
-        .get(...params) as { total: number };
+      // COUNT dijalankan dulu (parameter filter saja), baru query
+      // utama yang menambahkan parameter LIMIT/OFFSET.
+      const totalRows = await this.select<{ total: string | number }>(
+        `SELECT COUNT(*) AS total FROM materials m ${where}`,
+        params,
+      );
+      const total = Number(totalRows[0]?.total ?? 0);
 
-      const rows = this.db
-        .prepare(
-          `SELECT m.* FROM materials m ${where}
-           ORDER BY ${sortColumn} ${direction}, m.id ASC
-           LIMIT ? OFFSET ?`,
-        )
-        .all(...params, query.limit, offset) as MaterialRow[];
+      const limitPh = bind(params, [query.limit, offset]);
+      const rows = await this.select<MaterialRow>(
+        `SELECT m.* FROM materials m ${where}
+         ORDER BY ${sortColumn} ${direction}, m.id ASC
+         LIMIT ${limitPh[0]!} OFFSET ${limitPh[1]!}`,
+        params,
+      );
 
       const items = rows.map(MaterialRepository.mapRow) as MaterialWithRelations[];
-      this.attachRelations(items);
-      return { items, total: totalRow.total };
+      await this.attachRelations(items);
+      return { items, total };
     } catch (error) {
       throw new DatabaseError(
         `Gagal membaca daftar material: ${(error as Error).message}`,
@@ -191,25 +222,24 @@ export class MaterialRepository {
    * Ambil relasi course & tag untuk satu halaman hasil dalam DUA query —
    * bukan satu query per material (menghindari N+1, lihat CONSTRAINTS.md).
    */
-  private attachRelations(items: MaterialWithRelations[]): void {
+  private async attachRelations(items: MaterialWithRelations[]): Promise<void> {
     if (items.length === 0) return;
     const ids = items.map((item) => item.id);
-    const placeholders = ids.map(() => '?').join(',');
+    const params: unknown[] = [];
+    const ph = bind(params, ids);
 
-    const courseRows = this.db
-      .prepare(
-        `SELECT material_id, course_id FROM material_courses
-         WHERE material_id IN (${placeholders})`,
-      )
-      .all(...ids) as Array<{ material_id: string; course_id: string }>;
+    const courseRows = await this.select<{ material_id: string; course_id: string }>(
+      `SELECT material_id, course_id FROM material_courses
+       WHERE material_id IN (${ph.join(',')})`,
+      params,
+    );
 
-    const tagRows = this.db
-      .prepare(
-        `SELECT mt.material_id, t.name FROM material_tags mt
-         JOIN tags t ON t.id = mt.tag_id
-         WHERE mt.material_id IN (${placeholders})`,
-      )
-      .all(...ids) as Array<{ material_id: string; name: string }>;
+    const tagRows = await this.select<{ material_id: string; name: string }>(
+      `SELECT mt.material_id, t.name FROM material_tags mt
+       JOIN tags t ON t.id = mt.tag_id
+       WHERE mt.material_id IN (${ph.join(',')})`,
+      params,
+    );
 
     const coursesByMaterial = new Map<string, string[]>();
     for (const row of courseRows) {
@@ -231,66 +261,88 @@ export class MaterialRepository {
     }
   }
 
-  findById(id: string, options: { includeDeleted?: boolean } = {}): Material | null {
+  async findById(id: string, options: { includeDeleted?: boolean } = {}): Promise<Material | null> {
     const includeDeleted = options.includeDeleted ?? false;
-    const row = this.db
-      .prepare(
-        `SELECT * FROM materials
-         WHERE id = ? ${includeDeleted ? '' : 'AND deleted_at IS NULL'}`,
-      )
-      .get(id) as MaterialRow | undefined;
-
+    const rows = await this.select<MaterialRow>(
+      `SELECT * FROM materials
+       WHERE id = $1 ${includeDeleted ? '' : 'AND deleted_at IS NULL'}`,
+      [id],
+    );
+    const row = rows[0];
     return row ? MaterialRepository.mapRow(row) : null;
   }
 
   /** Pencarian kandidat duplikat berdasarkan DOI (B6). */
-  findByDoi(doi: string, excludeId?: string): Material | null {
-    const row = this.db
-      .prepare(
-        `SELECT * FROM materials WHERE doi = ? AND deleted_at IS NULL
-         ${excludeId ? 'AND id != ?' : ''}`,
-      )
-      .get(...(excludeId ? [doi, excludeId] : [doi])) as MaterialRow | undefined;
+  async findByDoi(doi: string, excludeId?: string): Promise<Material | null> {
+    const rows = excludeId
+      ? await this.select<MaterialRow>(
+          'SELECT * FROM materials WHERE doi = $1 AND deleted_at IS NULL AND id != $2',
+          [doi, excludeId],
+        )
+      : await this.select<MaterialRow>(
+          'SELECT * FROM materials WHERE doi = $1 AND deleted_at IS NULL',
+          [doi],
+        );
+    const row = rows[0];
     return row ? MaterialRepository.mapRow(row) : null;
   }
 
   /** Pencarian kandidat duplikat berdasarkan URL ternormalisasi (B2 + B6). */
-  findByUrl(url: string, excludeId?: string): Material | null {
-    const row = this.db
-      .prepare(
-        `SELECT * FROM materials WHERE url = ? AND deleted_at IS NULL
-         ${excludeId ? 'AND id != ?' : ''}`,
-      )
-      .get(...(excludeId ? [url, excludeId] : [url])) as MaterialRow | undefined;
+  async findByUrl(url: string, excludeId?: string): Promise<Material | null> {
+    const rows = excludeId
+      ? await this.select<MaterialRow>(
+          'SELECT * FROM materials WHERE url = $1 AND deleted_at IS NULL AND id != $2',
+          [url, excludeId],
+        )
+      : await this.select<MaterialRow>(
+          'SELECT * FROM materials WHERE url = $1 AND deleted_at IS NULL',
+          [url],
+        );
+    const row = rows[0];
     return row ? MaterialRepository.mapRow(row) : null;
   }
 
-  insert(material: MaterialCreateRow & { id: string }): Material {
+  async insert(material: MaterialCreateRow & { id: string }): Promise<Material> {
     try {
-      this.db
-        .prepare(
-          `INSERT INTO materials (
-             id, type, title, url, doi, source_name, authors, published_year,
-             publisher, volume, issue, pages, language, summary, importance,
-             status, deadline_at, version, created_at, updated_at
-           ) VALUES (
-             @id, @type, @title, @url, @doi, @sourceName, @authors, @publishedYear,
-             @publisher, @volume, @issue, @pages, @language, @summary, @importance,
-             @status, @deadlineAt, 1, datetime('now'), datetime('now')
-           )`,
-        )
-        .run(material);
+      await this.db.query(
+        `INSERT INTO materials (
+           id, type, title, url, doi, source_name, authors, published_year,
+           publisher, volume, issue, pages, language, summary, importance,
+           status, deadline_at, version, created_at, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,1,NOW(),NOW())`,
+        [
+          material.id,
+          material.type,
+          material.title,
+          material.url,
+          material.doi,
+          material.sourceName,
+          material.authors,
+          material.publishedYear,
+          material.publisher,
+          material.volume,
+          material.issue,
+          material.pages,
+          material.language,
+          material.summary,
+          material.importance,
+          material.status,
+          material.deadlineAt,
+        ],
+      );
     } catch (error) {
-      throw new DatabaseError(`Gagal menyimpan material: ${(error as Error).message}`);
+      throw new DatabaseError(
+        `Gagal menyimpan material: ${(error as Error).message}`,
+      );
     }
-    return this.findById(material.id) as Material;
+    return (await this.findById(material.id)) as Material;
   }
 
   /**
    * Update parsial + naikkan `version` (B8).
    * Patch hanya berisi field yang ada, jadi daftar kolom dibangun dari key.
    */
-  update(id: string, patch: MaterialUpdateRow): Material | null {
+  async update(id: string, patch: MaterialUpdateRow): Promise<Material | null> {
     const columnByField: Record<string, string> = {
       type: 'type',
       title: 'title',
@@ -313,93 +365,102 @@ export class MaterialRepository {
     const entries = Object.entries(patch).filter(([field]) => columnByField[field]);
     if (entries.length === 0) return this.findById(id);
 
-    const setClause = entries.map(([field]) => `${columnByField[field]} = @${field}`).join(', ');
+    const params: unknown[] = [];
+    const setClause = entries
+      .map(([field]) => {
+        const ph = bind(params, [patch[field as keyof MaterialUpdateRow]]);
+        return `${columnByField[field]} = ${ph[0]!}`;
+      })
+      .join(', ');
+    params.push(id);
+    const idPlaceholder = `$${params.length}`;
 
     try {
-      const result = this.db
-        .prepare(
-          `UPDATE materials
-           SET ${setClause}, version = version + 1, updated_at = datetime('now')
-           WHERE id = @id AND deleted_at IS NULL`,
-        )
-        .run({ ...patch, id });
+      const result = await this.db.query(
+        `UPDATE materials
+         SET ${setClause}, version = version + 1, updated_at = NOW()
+         WHERE id = ${idPlaceholder} AND deleted_at IS NULL`,
+        params,
+      );
 
-      if (result.changes === 0) return null;
+      if ((result.rowCount ?? 0) === 0) return null;
     } catch (error) {
-      throw new DatabaseError(`Gagal memperbarui material: ${(error as Error).message}`);
+      throw new DatabaseError(
+        `Gagal memperbarui material: ${(error as Error).message}`,
+      );
     }
     return this.findById(id);
   }
 
   /** B7: soft delete — item tetap tersimpan agar bisa di-restore. */
-  softDelete(id: string): boolean {
-    const result = this.db
-      .prepare(
-        `UPDATE materials SET deleted_at = datetime('now'), updated_at = datetime('now')
-         WHERE id = ? AND deleted_at IS NULL`,
-      )
-      .run(id);
-    return result.changes > 0;
+  async softDelete(id: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE materials SET deleted_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
-  restore(id: string): boolean {
-    const result = this.db
-      .prepare(
-        `UPDATE materials SET deleted_at = NULL, updated_at = datetime('now')
-         WHERE id = ? AND deleted_at IS NOT NULL`,
-      )
-      .run(id);
-    return result.changes > 0;
+  async restore(id: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE materials SET deleted_at = NULL, updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NOT NULL`,
+      [id],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   /** Hapus permanen; relasi course/tag terhapus otomatis oleh ON DELETE CASCADE. */
-  purge(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM materials WHERE id = ?').run(id);
-    return result.changes > 0;
+  async purge(id: string): Promise<boolean> {
+    const result = await this.db.query('DELETE FROM materials WHERE id = $1', [id]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   /* -------------------- Relasi course & tag -------------------- */
 
-  findCourseIds(materialId: string): string[] {
-    const rows = this.db
-      .prepare('SELECT course_id FROM material_courses WHERE material_id = ?')
-      .all(materialId) as Array<{ course_id: string }>;
+  async findCourseIds(materialId: string): Promise<string[]> {
+    const rows = await this.select<{ course_id: string }>(
+      'SELECT course_id FROM material_courses WHERE material_id = $1',
+      [materialId],
+    );
     return rows.map((row) => row.course_id);
   }
 
-  findTagNames(materialId: string): string[] {
-    const rows = this.db
-      .prepare(
-        `SELECT t.name FROM material_tags mt
-         JOIN tags t ON t.id = mt.tag_id
-         WHERE mt.material_id = ?
-         ORDER BY t.name`,
-      )
-      .all(materialId) as Array<{ name: string }>;
+  async findTagNames(materialId: string): Promise<string[]> {
+    const rows = await this.select<{ name: string }>(
+      `SELECT t.name FROM material_tags mt
+       JOIN tags t ON t.id = mt.tag_id
+       WHERE mt.material_id = $1
+       ORDER BY t.name`,
+      [materialId],
+    );
     return rows.map((row) => row.name);
   }
 
   /** Ganti seluruh relasi course dalam satu transaksi. */
-  replaceCourseLinks(materialId: string, courseIds: string[]): void {
-    const run = this.db.transaction((ids: string[]) => {
-      this.db.prepare('DELETE FROM material_courses WHERE material_id = ?').run(materialId);
-      const insert = this.db.prepare(
-        'INSERT OR IGNORE INTO material_courses (material_id, course_id) VALUES (?, ?)',
-      );
-      for (const courseId of ids) insert.run(materialId, courseId);
+  async replaceCourseLinks(materialId: string, courseIds: string[]): Promise<void> {
+    await withTransaction(this.db, async (client: DbClient) => {
+      await client.query('DELETE FROM material_courses WHERE material_id = $1', [materialId]);
+      for (const courseId of courseIds) {
+        await client.query(
+          'INSERT INTO material_courses (material_id, course_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [materialId, courseId],
+        );
+      }
     });
-    run(courseIds);
   }
 
   /** Ganti seluruh relasi tag dalam satu transaksi. */
-  replaceTagLinks(materialId: string, tagIds: string[]): void {
-    const run = this.db.transaction((ids: string[]) => {
-      this.db.prepare('DELETE FROM material_tags WHERE material_id = ?').run(materialId);
-      const insert = this.db.prepare(
-        'INSERT OR IGNORE INTO material_tags (material_id, tag_id) VALUES (?, ?)',
-      );
-      for (const tagId of ids) insert.run(materialId, tagId);
+  async replaceTagLinks(materialId: string, tagIds: string[]): Promise<void> {
+    await withTransaction(this.db, async (client: DbClient) => {
+      await client.query('DELETE FROM material_tags WHERE material_id = $1', [materialId]);
+      for (const tagId of tagIds) {
+        await client.query(
+          'INSERT INTO material_tags (material_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [materialId, tagId],
+        );
+      }
     });
-    run(tagIds);
   }
 }

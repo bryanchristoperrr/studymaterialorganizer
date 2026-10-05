@@ -1,12 +1,40 @@
 /**
- * Helper test: membangun aplikasi dengan SQLite in-memory (database sungguhan,
- * bukan mock — lihat CONSTRAINTS.md bagian Testing).
+ * Helper test: membangun aplikasi dengan PGlite (PostgreSQL in-memory
+ * berbasis WASM — database sungguhan, bukan mock, lihat CONSTRAINTS.md).
+ *
+ * PGlite memenuhi antarmuka `Db` yang sama dengan pg.Pool (produksi),
+ * sehingga repository & service diuji dengan dialek SQL yang identik
+ * (parameter $1, ON CONFLICT, NOW(), ILIKE).
  */
-import { createApp, type AppContext } from '../src/app';
-import { createDatabase, type Db } from '../src/db/connection';
+import { PGlite } from '@electric-sql/pglite';
+import { createApp, type AppContext } from '../src/app.js';
+import { applyMigrations, type Db, type QueryResult } from '../src/db/connection.js';
 
-export function createTestContext(): AppContext {
-  const db: Db = createDatabase(':memory:');
+/** Bungkus PGlite ke antarmuka Db (rowCount ← affectedRows). */
+function toDb(pg: PGlite): Db {
+  const run = async (text: string, params?: unknown[]): Promise<QueryResult> => {
+    const result = await pg.query(text, params);
+    return {
+      rows: result.rows as Record<string, unknown>[],
+      rowCount: result.affectedRows ?? null,
+    };
+  };
+
+  return {
+    query: run,
+    // PGlite adalah satu koneansi: "client" tambahan tetap memakai
+    // koneansi yang sama, sehingga BEGIN/COMMIT tetap konsisten.
+    connect: async () => ({ query: run }),
+    end: async () => {
+      await pg.close();
+    },
+  };
+}
+
+/** Context test dengan database PostgreSQL segar (migrasi sudah dijalankan). */
+export async function createTestContext(): Promise<AppContext> {
+  const db = toDb(new PGlite());
+  await applyMigrations(db);
   return createApp(db);
 }
 
