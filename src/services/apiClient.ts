@@ -7,7 +7,7 @@
 import { ApiError } from './apiError';
 import type { ApiErrorBody, ApiListSuccess, ApiSuccess } from '@/types';
 
-const BASE_URL = 'studymaterialorganizer-d7xm.vercel.app/api';
+const BASE_URL = '/api';
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
