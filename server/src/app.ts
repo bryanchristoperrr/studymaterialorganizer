@@ -8,16 +8,16 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Express } from 'express';
 import cors from 'cors';
-import { createDatabase, applyMigrations } from './db/connection.js';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { CourseRepository, SemesterRepository } from './repositories/courseRepository';
-import { MaterialRepository } from './repositories/materialRepository';
-import { TagRepository } from './repositories/tagRepository';
-import { createCourseRoutes, createSemesterRoutes, createTagRoutes } from './routes/courseRoutes';
-import { createMaterialRoutes } from './routes/materialRoutes';
-import { CourseService } from './services/courseService';
-import { MaterialService } from './services/materialService';
-import { TagService } from './services/tagService';
+import { createDatabase, type Db } from './db/connection.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { CourseRepository, SemesterRepository } from './repositories/courseRepository.js';
+import { MaterialRepository } from './repositories/materialRepository.js';
+import { TagRepository } from './repositories/tagRepository.js';
+import { createCourseRoutes, createSemesterRoutes, createTagRoutes } from './routes/courseRoutes.js';
+import { createMaterialRoutes } from './routes/materialRoutes.js';
+import { CourseService } from './services/courseService.js';
+import { MaterialService } from './services/materialService.js';
+import { TagService } from './services/tagService.js';
 
 export interface AppContext {
   app: Express;
