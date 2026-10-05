@@ -7,7 +7,13 @@
 import { ApiError } from './apiError';
 import type { ApiErrorBody, ApiListSuccess, ApiSuccess } from '@/types';
 
-const BASE_URL = 'studymaterialorganizer-d7xm.vercel.app/api';
+/**
+ * Base URL API.
+ * Default "/api" = same-origin (server Express melayani frontend + API di satu port).
+ * Untuk deployment terpisah (mis. backend di Vercel), atur VITE_API_URL
+ * saat build, contoh: VITE_API_URL=https://<domain-backend>/api
+ */
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -66,6 +72,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       response.status,
       errorBody ?? { code: 'INTERNAL_ERROR', message: 'Permintaan gagal diproses.' },
     );
+  }
+
+  // Respons sukses harus berisi JSON; jika bukan JSON (mis. halaman HTML
+  // dari SPA fallback), gagalkan dengan error yang jelas alih-alih crash.
+  if (payload === null) {
+    throw new ApiError(response.status, {
+      code: 'INVALID_RESPONSE',
+      message: 'Respons server tidak valid (bukan JSON).',
+    });
   }
 
   return (payload as ApiSuccess<T>).data;
