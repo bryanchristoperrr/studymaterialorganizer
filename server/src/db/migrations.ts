@@ -1,9 +1,9 @@
 /**
- * Migrasi skema database. Dijalankan otomatis saat server start
+ * Migrasi skema database PostgreSQL. Dijalankan otomatis saat server start
  * (lihat db/connection.ts) sehingga tidak perlu langkah manual.
  *
  * M1 hanya memuat tabel yang dipakai CRUD inti; tabel fase berikutnya
- * (notes, attachments, link_checks, ...) ditambahkan di migrasi terpisah.
+ * ditambahkan di migrasi terpisah.
  */
 export const migrations: Array<{ name: string; sql: string }> = [
   {
@@ -25,8 +25,8 @@ export const migrations: Array<{ name: string; sql: string }> = [
         lecturer TEXT,
         credits INTEGER CHECK (credits BETWEEN 0 AND 12),
         color TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS tags (
@@ -53,11 +53,11 @@ export const migrations: Array<{ name: string; sql: string }> = [
         importance INTEGER NOT NULL DEFAULT 2 CHECK (importance BETWEEN 1 AND 5),
         status TEXT NOT NULL DEFAULT 'active'
           CHECK (status IN ('active','archived','dead','duplicate','reading')),
-        deadline_at TEXT,
+        deadline_at TIMESTAMP,
         version INTEGER NOT NULL DEFAULT 1,
-        deleted_at TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        deleted_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
 
       CREATE TABLE IF NOT EXISTS material_courses (

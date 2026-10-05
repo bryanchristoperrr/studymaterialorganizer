@@ -1,60 +1,56 @@
 /**
- * Koneksi SQLite + provisioning skema.
- *
- * Database dibuka dengan flag WAL dan foreign_keys ON supaya cascade delete
- * (B7/B10) bekerja. Fungsi `createDatabase` menerima path file, sehingga test
- * integration dapat memakai ':memory:' tanpa mock.
+ * Koneksi PostgreSQL (Supabase) untuk Vercel Serverless.
  */
-import Database from 'better-sqlite3';
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import pkg from 'pg';
+const { Pool } = pkg;
 import { migrations } from './migrations';
 
-export type Db = Database.Database;
+export type Db = pkg.Pool;
 
-/**
- * Path default: <server>/data/app.db (diabaikan git).
- * Dihitung dari lokasi file ini, bukan process.cwd(), agar tidak
- * bergantung pada folder tempat server dijalankan.
- */
-export const DEFAULT_DB_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../data/app.db',
-);
+let pool: pkg.Pool | null = null;
 
-export function createDatabase(dbPath: string = DEFAULT_DB_PATH): Db {
-  if (dbPath !== ':memory:') {
-    const directory = dirname(dbPath);
-    if (!existsSync(directory)) {
-      mkdirSync(directory, { recursive: true });
+export function createDatabase(): Db {
+  if (!pool) {
+    const connectionString = process.env.DATABASE_URL;
+    
+    if (!connectionString) {
+      throw new Error('DATABASE_URL environment variable is not defined.');
     }
+
+    pool = new Pool({
+      connectionString,
+      ssl: {
+        rejectUnauthorized: false, // Diperlukan untuk koneksi ke Supabase di lingkungan serverless
+      },
+    });
   }
 
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  applyMigrations(db);
-  return db;
+  return pool;
 }
 
-/** Jalankan migrasi yang belum tercatat di tabel _migrations (idempoten). */
-export function applyMigrations(db: Db): void {
-  db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
-    name TEXT PRIMARY KEY,
-    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
+/** Jalankan migrasi ke PostgreSQL (idempoten). */
+export async function applyMigrations(db: Db): Promise<void> {
+  const client = await db.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        name TEXT PRIMARY KEY,
+        applied_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
 
-  const applied = new Set(
-    db
-      .prepare<[], { name: string }>('SELECT name FROM _migrations')
-      .all()
-      .map((row) => row.name),
-  );
+    const res = await client.query('SELECT name FROM _migrations');
+    const applied = new Set(res.rows.map((row) => row.name));
 
-  for (const migration of migrations) {
-    if (applied.has(migration.name)) continue;
-    db.exec(migration.sql);
-    db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(migration.name);
+    for (const migration of migrations) {
+      if (applied.has(migration.name)) continue;
+      
+      // Catatan: Jika ada sintaks SQL SQLite di migration.sql yang berbeda 
+      // dengan PostgreSQL, pastikan untuk menyesuaikannya.
+      await client.query(migration.sql);
+      await client.query('INSERT INTO _migrations (name) VALUES ($1)', [migration.name]);
+    }
+  } finally {
+    client.release();
   }
 }
