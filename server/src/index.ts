@@ -1,36 +1,26 @@
 /**
- * Entry point server. Menjalankan migrasi skema lalu menyalakan HTTP listener.
+ * Entry point server untuk Vercel Serverless & Local Development.
  */
-import { existsSync } from 'node:fs';
-import { createApp, DIST_PATH } from './app';
-import { createDatabase, DEFAULT_DB_PATH } from './db/connection';
+import { createApp } from './app';
+import { createDatabase, applyMigrations } from './db/connection';
 
-const PORT = Number(process.env.PORT ?? 3001);
+// Inisialisasi database dan aplikasi Express
+const db = createDatabase();
 
-const { app, db } = createApp(createDatabase(DEFAULT_DB_PATH));
-
-const server = app.listen(PORT, () => {
-  // eslint-disable-next-line no-console -- log startup.
-  console.log(`API Study Material Organizer berjalan di http://localhost:${PORT}`);
-  // eslint-disable-next-line no-console -- log startup.
-  console.log(`Database: ${DEFAULT_DB_PATH}`);
-  // eslint-disable-next-line no-console -- log startup.
-  console.log(
-    existsSync(DIST_PATH)
-      ? `Frontend (build) disajikan di http://localhost:${PORT}`
-      : 'Frontend belum dibangun. Jalankan "npm run build" terlebih dahulu, atau "npm run dev" untuk mode development.',
-  );
+// Jalankan migrasi database saat start
+applyMigrations(db).catch((err) => {
+  console.error('Gagal menjalankan migrasi database saat startup:', err);
 });
 
-/** Tutup server & database dengan rapi saat proses dihentikan (Ctrl+C). */
-function shutdown(signal: string): void {
-  // eslint-disable-next-line no-console -- log shutdown.
-  console.log(`\nMenerima ${signal}, menutup server...`);
-  server.close(() => {
-    db.close();
-    process.exit(0);
+const { app } = createApp(db);
+
+// Ekspor app agar Vercel Serverless dapat menangkap request HTTP
+export default app;
+
+// Jika dijalankan secara lokal (bukan di Vercel), jalankan HTTP listener biasa
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = Number(process.env.PORT ?? 3001);
+  app.listen(PORT, () => {
+    console.log(`API Study Material Organizer berjalan di http://localhost:${PORT}`);
   });
 }
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
