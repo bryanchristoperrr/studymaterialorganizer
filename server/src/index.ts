@@ -1,11 +1,12 @@
 /**
  * Entry point server tunggal untuk Vercel Serverless & Local Development.
  */
+
 import express from 'express';
 import cors from 'cors';
 import { createDatabase, applyMigrations } from './db/connection.js';
 
-// Inisialisasi database dan migrasi
+// Inisialisasi database dan migrasi PostgreSQL
 const db = createDatabase();
 applyMigrations(db).catch((err) => {
   console.error('Gagal menjalankan migrasi database saat startup:', err);
@@ -17,15 +18,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- ROUTES ANDA ---
-// Contoh rute dasar untuk tes koneksi
+// Rute dasar untuk pengecekan kesehatan server / tes koneksi
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
-
-// Masukkan rute materi atau rute utama Anda di sini jika ada, contoh:
-// import { materialRoutes } from './routes/materials.js';
-// app.use('/api/materials', materialRoutes(db));
 
 // Ekspor app agar Vercel Serverless dapat menangkap request HTTP
 export default app;
