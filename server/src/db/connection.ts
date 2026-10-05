@@ -3,7 +3,7 @@
  */
 import pkg from 'pg';
 const { Pool } = pkg;
-import { migrations } from './migrations';
+import { migrations } from './migrations.js';
 
 export type Db = pkg.Pool;
 
