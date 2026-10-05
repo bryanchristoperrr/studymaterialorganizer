@@ -1,11 +1,20 @@
 /**
  * CLI untuk menjalankan migrasi manual: `npm run migrate`.
- * Berguna bila ingin menyiapkan skema tanpa menyalakan server.
  */
-import { createDatabase, DEFAULT_DB_PATH } from './connection';
+import { createDatabase, applyMigrations } from './connection.js';
 
-const db = createDatabase(DEFAULT_DB_PATH);
-db.close();
+async function runCli() {
+  const db = createDatabase();
+  try {
+    await applyMigrations(db);
+    console.log('Migrasi database PostgreSQL berhasil dijalankan.');
+  } catch (err) {
+    console.error('Gagal menjalankan migrasi:', err);
+    process.exit(1);
+  } finally {
+    await db.end();
+    process.exit(0);
+  }
+}
 
-// eslint-disable-next-line no-console -- CLI memang harus mencetak hasil ke stdout.
-console.log(`Migrasi selesai untuk database: ${DEFAULT_DB_PATH}`);
+runCli();
