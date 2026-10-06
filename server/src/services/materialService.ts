@@ -18,7 +18,7 @@ import type {
   CreateMaterialInput,
   MaterialsQuery,
   UpdateMaterialInput,
-} from '../../../shared/schemas.js';
+} from '../../shared/schemas.js';
 import {
   IMPORTANCE_DEFAULT,
   type Material,
@@ -26,7 +26,7 @@ import {
   type MaterialStatus,
   type MaterialType,
   type Importance,
-} from '../../../shared/types.js';
+} from '../../shared/types.js';
 import type { CourseRepository } from '../repositories/courseRepository.js';
 import type { MaterialCreateRow, MaterialRepository } from '../repositories/materialRepository.js';
 import type { TagRepository } from '../repositories/tagRepository.js';

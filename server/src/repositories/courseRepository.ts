@@ -5,7 +5,7 @@
  * Dialek PostgreSQL: parameter bernomor ($1, $2, …) dan NOW().
  */
 import type { Db, QueryResult } from '../db/connection.js';
-import type { Course, Semester } from '../../../shared/types.js';
+import type { Course, Semester } from '../../shared/types.js';
 import { DatabaseError } from '../utils/errors.js';
 
 interface CourseRow {

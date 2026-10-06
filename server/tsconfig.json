@@ -17,8 +17,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "shared/*": ["../shared/*"]
+      "shared/*": ["shared/*"]
     }
   },
-  "include": ["api", "src", "tests", "../shared"]
+  "include": ["api", "src", "tests", "shared"]
 }

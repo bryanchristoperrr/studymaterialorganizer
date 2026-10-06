@@ -7,7 +7,7 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
-import { createMaterialSchema, materialsQuerySchema, updateMaterialSchema } from '../../../shared/schemas.js';
+import { createMaterialSchema, materialsQuerySchema, updateMaterialSchema } from '../../shared/schemas.js';
 import { createMaterialController } from '../controllers/materialController.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';

@@ -2,7 +2,7 @@
  * Controller course, semester, dan tag: memetakan HTTP ke service.
  */
 import type { Request, Response } from 'express';
-import type { CreateCourseInput, CreateSemesterInput, UpdateCourseInput } from '../../../shared/schemas.js';
+import type { CreateCourseInput, CreateSemesterInput, UpdateCourseInput } from '../../shared/schemas.js';
 import { getValidated } from '../middleware/validate.js';
 import type { CourseService } from '../services/courseService.js';
 import type { TagService } from '../services/tagService.js';

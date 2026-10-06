@@ -8,7 +8,7 @@ import type {
   CreateMaterialInput,
   MaterialsQuery,
   UpdateMaterialInput,
-} from '../../../shared/schemas.js';
+} from '../../shared/schemas.js';
 import { getValidated } from '../middleware/validate.js';
 import type { MaterialService } from '../services/materialService.js';
 import { ValidationError } from '../utils/errors.js';

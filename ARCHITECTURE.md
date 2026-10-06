@@ -19,7 +19,7 @@ repetition, backup/import) **tidak** ada di kode saat ini; rancangnya di `SPEC.m
 - **Database**: SQLite via `better-sqlite3` (file-based, zero-config)
 - **API Communication**: RESTful JSON over HTTP
 - **Styling**: CSS Modules (or plain CSS)
-- **Validation**: Zod (skema di `shared/`, dipakai frontend & backend)
+- **Validation**: Zod (skema di `server/shared/`, dipakai frontend & backend)
 - **Testing**: Vitest + React Testing Library + supertest
 
 ## Running the Application
@@ -49,9 +49,6 @@ lewat `npm run dev` atau `npm start`.
 
 ```
 /
-├── shared/                 # Skema Zod + tipe yang dipakai frontend & backend
-│   ├── types.ts
-│   └── schemas.ts
 ├── src/                    # Frontend
 │   ├── components/
 │   │   ├── common/         # Button, Input, Select, Textarea, Modal, Badge, dll
@@ -60,21 +57,25 @@ lewat `npm run dev` atau `npm start`.
 │   ├── pages/              # Halaman (route-level)
 │   ├── services/           # Lapisan komunikasi API
 │   ├── hooks/              # State server & logika reusable
-│   ├── types/              # Re-export tipe dari shared/ + tipe UI
+│   ├── types/              # Re-export tipe dari server/shared/ + tipe UI
 │   ├── utils/              # Helper murni
 │   ├── styles/
 │   └── App.tsx             # Routing
 ├── server/
+│   ├── shared/             # Skema Zod + tipe yang dipakai frontend & backend
+│   │   ├── types.ts
+│   │   └── schemas.ts
 │   ├── src/
 │   │   ├── controllers/    # HTTP request → service
 │   │   ├── services/       # Logika bisnis
 │   │   ├── repositories/   # Akses data (SQL)
 │   │   ├── routes/         # Definisi route
-│   │   ├── middleware/     # validation, errorHandler, notFound
+│   │   ├── middleware/     # validation, asyncHandler, errorHandler, notFound
 │   │   ├── db/             # koneksi + migrasi
 │   │   ├── utils/          # normalisasi URL/DOI, pagination, error domain
 │   │   ├── app.ts
 │   │   └── index.ts
+│   ├── api/                # Entry serverless Vercel
 │   ├── tests/
 │   ├── package.json
 │   └── tsconfig.json
@@ -83,7 +84,11 @@ lewat `npm run dev` atau `npm start`.
 └── vitest.config.ts
 ```
 
-> Path alias `shared/*` daftarkan di `tsconfig.json` (frontend) dan `server/tsconfig.json`.
+> Path alias `shared/*` daftarkan di `tsconfig.json` (frontend →
+> `server/shared/*`) dan `server/tsconfig.json` (→ `shared/*`).
+> Folder `shared/` berada di dalam `server/` sehingga proyek
+> backend Vercel (Root Directory = `server/`) self-contained:
+> setiap file yang diimpor berada di dalam root proyek.
 
 ## Data Model
 
@@ -388,7 +393,7 @@ sehingga controller tidak pernah melempar error tak terduga karena input.
 ## Validation Flow
 
 ### Client
-1. Skema shared (`shared/schemas.ts`) mendefinisikan bentuk form
+1. Skema shared (`server/shared/schemas.ts`) mendefinisikan bentuk form
 2. `MaterialForm` memvalidasi per-field saat blur/submit
 3. Submit memvalidasi seluruh form sebelum request
 4. Error 400 dari server dipetakan ke field terkait bila `details[].field` cocok

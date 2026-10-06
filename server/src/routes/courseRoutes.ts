@@ -10,7 +10,7 @@ import {
   createCourseSchema,
   createSemesterSchema,
   updateCourseSchema,
-} from '../../../shared/schemas.js';
+} from '../../shared/schemas.js';
 import { createCourseController, createTagController } from '../controllers/courseController.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';

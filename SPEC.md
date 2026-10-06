@@ -464,7 +464,7 @@ components/
 
 ## 9. Validasi (Ganda)
 
-Skema Zod dipakai bersama oleh frontend & backend (satu sumber kebenaran, di `shared/`), dengan perbedaan: client pakai schema penuh untuk UX, server memakai subset parse + aturan bisnis tambahan.
+Skema Zod dipakai bersama oleh frontend & backend (satu sumber kebenaran, di `server/shared/`), dengan perbedaan: client pakai schema penuh untuk UX, server memakai subset parse + aturan bisnis tambahan.
 
 Aturan ringkas:
 
@@ -553,7 +553,7 @@ Sebelum kode M1 ditulis, diperlukan persetujuan (sesuai `CONSTRAINTS.md`: "Do no
 
 1. Ganti domain Employee → Material di seluruh dokumen (`ARCHITECTURE.md`).
 2. Tentukan nama folder/project (disarankan `study-material-organizer`).
-3. Tambahkan folder `shared/` untuk skema Zod & tipe yang dipakai bersama frontend & backend.
+3. Tambahkan folder `server/shared/` untuk skema Zod & tipe yang dipakai bersama frontend & backend.
 4. Tambah dependensi baru yang **hanya** jika disetujui: `node-cron` (link check terjadwal), `better-sqlite3` + FTS5 (sudah termasuk SQLite), `@tanstack/react-query`, `multer` (upload).
 
 Tanpa persetujuan tersebut, implementasi kode belum dimulai — dokumen ini adalah output desain.

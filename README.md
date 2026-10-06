@@ -83,13 +83,13 @@ dengan database sungguhan, bukan mock), dan kontrak API (status code + envelope 
 ## Struktur Proyek
 
 ```
-├── shared/            # Tipe + skema Zod pakai bersama frontend & backend
 ├── src/               # Frontend React
 │   ├── components/    # common/ (Button, Modal, …) + material/ (domain)
 │   ├── pages/         # Daftar, Detail, Tambah, Edit, Courses
 │   ├── services/      # Lapisan API (komponen tidak pernah fetch langsung)
 │   └── hooks/         # useMaterials, useAsyncData, useDebouncedValue
 ├── server/
+│   ├── shared/        # Tipe + skema Zod pakai bersama frontend & backend
 │   ├── api/           # Entry serverless Vercel (melayani /api/*)
 │   └── src/
 │       ├── repositories/  # Akses data (SQL, parameter binding $n)

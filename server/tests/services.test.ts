@@ -4,8 +4,8 @@
  * saling memengaruhi.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createMaterialSchema, updateMaterialSchema } from '../../shared/schemas.js';
-import type { MaterialsQuery } from '../../shared/schemas.js';
+import { createMaterialSchema, updateMaterialSchema } from '../shared/schemas.js';
+import type { MaterialsQuery } from '../shared/schemas.js';
 import type { AppContext } from '../src/app.js';
 import { ConflictError, NotFoundError, ValidationError } from '../src/utils/errors.js';
 import { createTestContext } from './helpers.js';

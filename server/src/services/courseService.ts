@@ -3,7 +3,7 @@
  * B10: kode course unik (perbandingan case-insensitive, disimpan uppercase).
  */
 import { randomUUID } from 'node:crypto';
-import type { Course, CourseInput, CoursePatch, Semester, SemesterInput } from '../../../shared/types.js';
+import type { Course, CourseInput, CoursePatch, Semester, SemesterInput } from '../../shared/types.js';
 import type { CourseRepository, SemesterRepository } from '../repositories/courseRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 

@@ -9,7 +9,7 @@
  */
 import type { Db, DbClient, QueryResult } from '../db/connection.js';
 import { withTransaction } from '../db/transaction.js';
-import type { MaterialsQuery } from '../../../shared/schemas.js';
+import type { MaterialsQuery } from '../../shared/schemas.js';
 import type {
   Importance,
   Material,
@@ -17,7 +17,7 @@ import type {
   MaterialStatus,
   MaterialType,
   MaterialWithRelations,
-} from '../../../shared/types.js';
+} from '../../shared/types.js';
 import { DatabaseError } from '../utils/errors.js';
 
 /** Bentuk baris mentah di tabel materials (snake_case). */

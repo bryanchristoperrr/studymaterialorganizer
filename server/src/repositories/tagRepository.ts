@@ -5,7 +5,7 @@
  * Dialek PostgreSQL: parameter bernomor ($1, $2, …) dan ON CONFLICT.
  */
 import type { Db, QueryResult } from '../db/connection.js';
-import type { Tag } from '../../../shared/types.js';
+import type { Tag } from '../../shared/types.js';
 import { DatabaseError } from '../utils/errors.js';
 
 interface TagRow {
