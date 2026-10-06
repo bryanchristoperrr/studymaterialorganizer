@@ -111,8 +111,11 @@ Frontend dan backend dideploy sebagai **dua proyek Vercel** terpisah
 (masing-masing punya `package.json`).
 
 **1. Backend** — proyek baru, *Root Directory* = `server/`:
-- Framework preset: Other (Vercel otomatis mendeteksi `api/index.ts`
-  sebagai Serverless Function Node.js 20 via `server/vercel.json`).
+- Tanpa konfigurasi tambahan: Vercel otomatis mendeteksi
+  `api/index.ts` sebagai Serverless Function Node.js
+  (konvensi folder `api/`, zero-config). Versi runtime
+  Node.js diatur di dashboard → Settings → Functions bila
+  ingin memastikan.
 - Environment Variable produksi: `DATABASE_URL` = connection string Supabase.
 - Migrasi skema otomatis dijalankan saat *cold start*.
 
