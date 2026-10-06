@@ -30,8 +30,12 @@ in-memory untuk test).
 
 - **Node.js ≥ 22** (satu runtime untuk frontend dan backend)
 - npm ≥ 10
-- **DATABASE_URL** — connection string PostgreSQL. Untuk produksi gunakan
-  Supabase (Project Settings → Database → URI, port 6543/pooled).
+- **Produksi (Vercel):** `DATABASE_URL` — connection string PostgreSQL.
+  Untuk produksi gunakan Supabase (Project Settings → Database → URI,
+  port 6543/pooled).
+- **Development:** tanpa konfigurasi — server memakai PGlite
+  (PostgreSQL asli berbasis WASM) yang tersimpan di `server/data/pglite`
+  bila `DATABASE_URL` tidak diset. Data bertahan antar-restart.
 
 ## Instalasi & Menjalankan
 
@@ -40,10 +44,7 @@ in-memory untuk test).
 npm install
 npm --prefix server install
 
-# salin connection string PostgreSQL ke file .env di server/
-echo "DATABASE_URL=postgresql://..." > server/.env
-
-# development (kedua proses sekaligus, satu terminal)
+# development (kedua proses sekaligus, satu terminal) — PAKAI INI
 npm run dev:all
 
 # atau manual di dua terminal terpisah:
@@ -51,16 +52,23 @@ npm run dev       # Vite (port 5173), proxy /api → 3001
 npm run dev:api   # Express (port 3001)
 
 # production: build frontend, lalu serve API + frontend di port 3001
+# (wajib: DATABASE_URL di server/.env atau environment)
 npm start
 ```
+
+> **Penting:** `npm run dev` saja hanya menjalankan Vite — request
+> `/api/*` akan gagal dengan `ECONNREFUSED` karena backend belum
+> berjalan. Gunakan `npm run dev:all` (atau jalankan `npm run dev:api`
+> di terminal terpisah).
 
 Buka **http://localhost:3001** (production) atau **http://localhost:5173** (development).
 
 > Jangan buka `index.html` langsung dari filesystem — module script diblokir dari
 > `file://` dan server statis tanpa MIME type yang benar akan menolak aset `.js`.
 
-Skema database dibuat otomatis (migrasi idempoten) saat server pertama kali
-dijalankan.
+Server memuat `server/.env` bila ada (format `KEY=value`).
+Skema database dibuat otomatis (migrasi idempoten) saat server pertama
+kali dijalankan.
 
 ## Pengujian
 
