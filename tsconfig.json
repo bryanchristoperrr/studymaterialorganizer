@@ -22,8 +22,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "shared/*": ["server/shared/*"]
+      "shared/*": ["shared/*"]
     }
   },
-  "include": ["src", "server/shared", "vite.config.ts", "vitest.setup.ts"]
+  "include": ["src", "shared", "api", "vite.config.ts", "vitest.setup.ts"]
 }
